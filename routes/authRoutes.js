@@ -4,8 +4,12 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
+const { normalizeEmail, isEnvAdminCredentials } = require('../utils/authHelpers');
 
 const generateToken = (id) => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is not configured');
+  }
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || '30d' });
 };
 
@@ -47,9 +51,44 @@ router.post(
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    const normalizedEmail = normalizeEmail(email);
 
-    if (!user || !(await user.matchPassword(password))) {
+    console.log('[auth/login] Incoming request', {
+      email: email || '',
+      normalizedEmail,
+      passwordProvided: Boolean(password),
+    });
+
+    if (isEnvAdminCredentials(normalizedEmail, password)) {
+      console.log('[auth/login] Matched env admin credentials');
+      return res.json({
+        _id: 'env-admin',
+        name: 'Admin',
+        email: process.env.ADMIN_EMAIL,
+        role: 'admin',
+        avatar: '',
+        token: generateToken('env-admin'),
+      });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
+    console.log('[auth/login] User from DB', user ? {
+      id: user._id,
+      email: user.email,
+      role: user.role,
+      hasPassword: Boolean(user.password),
+      isBanned: user.isBanned,
+    } : null);
+
+    if (!user) {
+      console.log('[auth/login] No user found for normalized email');
+      return res.status(401).json({ message: 'Invalid email or password' });
+    }
+
+    const passwordMatch = await user.matchPassword(password);
+    console.log('[auth/login] Password compare result', passwordMatch);
+
+    if (!passwordMatch) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
@@ -57,15 +96,19 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ message: `Account banned. Reason: ${user.banReason || 'Policy violation'}` });
     }
 
+    const token = generateToken(user._id);
+    console.log('[auth/login] JWT generated successfully');
+
     res.json({
       _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
       avatar: user.avatar,
-      token: generateToken(user._id),
+      token,
     });
   } catch (error) {
+    console.error('[auth/login] Login error', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
