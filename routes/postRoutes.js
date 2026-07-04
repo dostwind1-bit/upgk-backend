@@ -23,13 +23,34 @@ router.post('/', protect, uploadImage.array('images', 5), [
       return res.status(400).json({ message: 'Invalid post type' });
     }
 
+    const allowedCategories = [
+      'General',
+      'Education',
+      'Technology',
+      'Health & Fitness',
+      'Business & Finance',
+      'Career & Jobs',
+      'Relationships',
+      'Entertainment',
+      'Sports',
+      'Science',
+      'Personal Development',
+      'Travel',
+      'Food',
+      'Sawaal',
+    ];
+
+    if (category && !allowedCategories.includes(category)) {
+      return res.status(400).json({ message: 'Invalid category' });
+    }
+
     const images = req.files ? req.files.map((f) => f.path) : [];
 
     // For plagiarism check, pull recent approved text posts in same category
     let existingTexts = [];
     if (postType === 'blog' || postType === 'question') {
       const recentPosts = await Post.find({
-        category: category || 'general',
+        category: category || 'General',
         moderationStatus: 'approved',
       })
         .select('content')
@@ -56,7 +77,7 @@ router.post('/', protect, uploadImage.array('images', 5), [
       title,
       slug,
       content: content || '',
-      category: category || 'general',
+      category: category || 'General',
       tags: tags ? tags.split(',').map((t) => t.trim()) : [],
       images,
       videoType: videoType || null,
@@ -110,7 +131,7 @@ router.post('/video', protect, uploadVideo.single('video'), async (req, res) => 
       title,
       slug,
       content: content || '',
-      category: category || 'general',
+      category: category || 'General',
       tags: tags ? tags.split(',').map((t) => t.trim()) : [],
       videoType,
       videoUrl: finalVideoUrl,

@@ -11,7 +11,26 @@ const postSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true, maxlength: 200 },
     slug: { type: String, unique: true },
     content: { type: String, default: '' }, // blog text / question body
-    category: { type: String, default: 'general' }, // e.g. python, ai, sql, general
+    category: {
+      type: String,
+      enum: [
+        'General',
+        'Education',
+        'Technology',
+        'Health & Fitness',
+        'Business & Finance',
+        'Career & Jobs',
+        'Relationships',
+        'Entertainment',
+        'Sports',
+        'Science',
+        'Personal Development',
+        'Travel',
+        'Food',
+        'Sawaal',
+      ],
+      default: 'General',
+    },
     tags: [{ type: String }],
 
     // Media fields
