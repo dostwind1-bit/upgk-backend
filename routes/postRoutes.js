@@ -171,6 +171,53 @@ router.get('/:slug', optionalAuth, async (req, res) => {
   }
 });
 
+// @route  PUT /api/posts/:id
+router.put('/:id', protect, [
+  body('title').optional().trim().notEmpty().withMessage('Title is required').isLength({ max: 200 }).withMessage('Title must be at most 200 characters'),
+  body('content').optional().trim().notEmpty().withMessage('Content is required').isLength({ max: 10000 }).withMessage('Content must be at most 10000 characters'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ message: 'Post not found' });
+
+    if (post.author.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    const { title, content } = req.body;
+    if (title === undefined && content === undefined) {
+      return res.status(400).json({ message: 'Nothing to update' });
+    }
+
+    if (title !== undefined) post.title = title;
+    if (content !== undefined) post.content = content;
+
+    const existingTexts = [];
+    const modResult = await moderatePost({
+      postType: post.postType,
+      title: post.title,
+      content: post.content || '',
+      images: post.images || [],
+      videoThumbnail: post.videoThumbnail || '',
+      existingTexts,
+    });
+
+    post.moderationStatus = modResult.moderationStatus === 'approved' ? 'pending' : modResult.moderationStatus;
+    post.moderationFlags = modResult.moderationFlags || [];
+    post.moderationScore = modResult.moderationScore || 0;
+    post.moderationNote = modResult.moderationNote || 'Updated and pending review';
+    post.rejectedReason = '';
+
+    await post.save();
+    res.json(post);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // @route  PUT /api/posts/:id/like
 router.put('/:id/like', protect, async (req, res) => {
   try {

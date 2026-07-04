@@ -5,6 +5,7 @@ const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 const { normalizeEmail, isEnvAdminCredentials } = require('../utils/authHelpers');
+const { buildPublicProfilePayload } = require('../utils/publicProfile');
 
 const generateToken = (id) => {
   if (!process.env.JWT_SECRET) {
@@ -122,6 +123,29 @@ router.post('/login', [
 // @route  GET /api/auth/me
 router.get('/me', protect, async (req, res) => {
   res.json(req.user);
+});
+
+// @route  GET /api/auth/users
+router.get('/users', protect, async (req, res) => {
+  try {
+    const users = await User.find({}, '_id name avatar bio role').sort({ name: 1 });
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route  GET /api/auth/profile/:userId
+router.get('/profile/:userId', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId).select('_id name avatar bio role');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const posts = await Post.find({ author: user._id }).sort({ createdAt: -1 }).lean();
+    res.json(buildPublicProfilePayload(user, posts));
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
 });
 
 // @route  PUT /api/auth/profile
