@@ -48,7 +48,13 @@ router.post(
 );
 
 // @route  POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', [
+  body('email').isEmail().withMessage('Valid email required'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   try {
     const { email, password } = req.body;
     const normalizedEmail = normalizeEmail(email);
@@ -119,7 +125,13 @@ router.get('/me', protect, async (req, res) => {
 });
 
 // @route  PUT /api/auth/profile
-router.put('/profile', protect, async (req, res) => {
+router.put('/profile', protect, [
+  body('name').optional().trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
+  body('bio').optional().isLength({ max: 300 }).withMessage('Bio must be at most 300 characters'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   try {
     const { name, bio, avatar } = req.body;
     const user = await User.findById(req.user._id);

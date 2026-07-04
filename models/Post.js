@@ -39,6 +39,8 @@ const postSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+postSchema.index({ slug: 1 }, { unique: true });
+postSchema.index({ createdAt: -1 });
 postSchema.index({ title: 'text', content: 'text' });
 
 module.exports = mongoose.model('Post', postSchema);

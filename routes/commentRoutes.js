@@ -1,12 +1,19 @@
 const express = require('express');
 const router = express.Router();
+const { body, validationResult } = require('express-validator');
 const Comment = require('../models/Comment');
 const Post = require('../models/Post');
 const { protect } = require('../middleware/auth');
 const { checkTextModeration } = require('../services/moderation');
 
 // @route  POST /api/comments
-router.post('/', protect, async (req, res) => {
+router.post('/', protect, [
+  body('postId').notEmpty().withMessage('Post ID is required'),
+  body('content').trim().notEmpty().withMessage('Comment content is required').isLength({ max: 1000 }).withMessage('Comment content must be at most 1000 characters'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   try {
     const { postId, content, parentComment } = req.body;
 

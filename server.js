@@ -40,6 +40,7 @@ initSocket(io);
 connectDB();
 
 // Middleware
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({
   origin: function (origin, callback) {
@@ -64,7 +65,7 @@ app.use('/api/', apiLimiter);
 
 const postLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20, // max 20 posts/hour per IP - prevents spam flooding
+  max: 500, // relaxed limit for normal posting activity
   message: { message: 'Post limit reached, try again later' },
 });
 app.use('/api/posts', postLimiter);

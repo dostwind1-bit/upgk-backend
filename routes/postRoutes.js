@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const slugify = require('slugify');
+const { body, validationResult } = require('express-validator');
 const Post = require('../models/Post');
 const User = require('../models/User');
 const { protect, admin, optionalAuth } = require('../middleware/auth');
@@ -8,7 +9,13 @@ const { uploadImage, uploadVideo } = require('../middleware/upload');
 const { moderatePost } = require('../services/moderation');
 
 // @route  POST /api/posts  (create blog/image/question post)
-router.post('/', protect, uploadImage.array('images', 5), async (req, res) => {
+router.post('/', protect, uploadImage.array('images', 5), [
+  body('title').trim().notEmpty().withMessage('Title is required').isLength({ max: 200 }).withMessage('Title must be at most 200 characters'),
+  body('content').trim().notEmpty().withMessage('Content is required').isLength({ max: 10000 }).withMessage('Content must be at most 10000 characters'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
   try {
     const { postType, title, content, category, tags, videoType, videoUrl } = req.body;
 
