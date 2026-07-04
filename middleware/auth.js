@@ -18,14 +18,25 @@ exports.protect = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await User.findById(decoded.id).select('-password');
 
-    if (!req.user) {
-      return res.status(401).json({ message: 'User not found' });
-    }
+    if (decoded.id === 'env-admin') {
+      req.user = {
+        _id: 'env-admin',
+        id: 'env-admin',
+        email: process.env.ADMIN_EMAIL,
+        role: 'admin',
+        name: 'Admin',
+      };
+    } else {
+      req.user = await User.findById(decoded.id).select('-password');
 
-    if (req.user.isBanned) {
-      return res.status(403).json({ message: 'Your account has been banned. Contact support.' });
+      if (!req.user) {
+        return res.status(401).json({ message: 'User not found' });
+      }
+
+      if (req.user.isBanned) {
+        return res.status(403).json({ message: 'Your account has been banned. Contact support.' });
+      }
     }
 
     next();
@@ -51,7 +62,18 @@ exports.optionalAuth = async (req, res, next) => {
     try {
       const token = authHeader.split(' ')[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findById(decoded.id).select('-password');
+
+      if (decoded.id === 'env-admin') {
+        req.user = {
+          _id: 'env-admin',
+          id: 'env-admin',
+          email: process.env.ADMIN_EMAIL,
+          role: 'admin',
+          name: 'Admin',
+        };
+      } else {
+        req.user = await User.findById(decoded.id).select('-password');
+      }
     } catch (error) {
       req.user = null;
     }
