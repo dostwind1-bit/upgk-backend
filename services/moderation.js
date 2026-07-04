@@ -4,50 +4,48 @@ const TfIdf = natural.TfIdf;
 
 /**
  * ============================================================
- * TEXT MODERATION - Google Perspective API (100% FREE)
- * Detects: toxicity, insults, threats, profanity, hate speech
- * Get free key: https://www.perspectiveapi.com/
+ * TEXT MODERATION - Sightengine (FREE tier - 500 ops/month)
+ * Detects: profanity, spam-like abusive language, bad words
  * ============================================================
  */
 async function checkTextModeration(text) {
-  const result = { flags: [], score: 0, isSafe: true };
+  const result = { flags: [], score: 0, isSafe: true, failed: false };
 
   if (!text || text.trim().length === 0) return result;
 
   try {
-    const response = await axios.post(
-      `https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze?key=${process.env.PERSPECTIVE_API_KEY}`,
-      {
-        comment: { text: text.substring(0, 3000) }, // Perspective has char limits
-        languages: ['en', 'hi'],
-        requestedAttributes: {
-          TOXICITY: {},
-          SEVERE_TOXICITY: {},
-          INSULT: {},
-          THREAT: {},
-          PROFANITY: {},
-        },
-      }
-    );
+    const params = new URLSearchParams();
+    params.append('text', text.substring(0, 3000));
+    params.append('mode', 'standard');
+    params.append('lang', 'en');
+    params.append('api_user', process.env.SIGHTENGINE_API_USER);
+    params.append('api_secret', process.env.SIGHTENGINE_API_SECRET);
 
-    const scores = response.data.attributeScores;
-    let maxScore = 0;
+    const response = await axios.post('https://api.sightengine.com/1.0/text/check.json', params, {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
 
-    for (const attr in scores) {
-      const value = scores[attr].summaryScore.value;
-      if (value > maxScore) maxScore = value;
-      if (value >= 0.75) {
-        result.flags.push(attr.toLowerCase());
-      }
-    }
+    const data = response.data;
+    const categories = data.moderation_categories || {};
+    const profanity = Number(categories.profanity || 0);
+    const sexual = Number(categories.sexual || 0);
+    const violence = Number(categories.violence || 0);
+    const spam = Number(categories.spam || 0);
 
+    const maxScore = Math.max(profanity, sexual, violence, spam);
     result.score = maxScore;
-    result.isSafe = maxScore < 0.75; // threshold - tune as needed
+
+    if (profanity > 0.5) result.flags.push('profanity');
+    if (sexual > 0.5) result.flags.push('sexual_content');
+    if (violence > 0.5) result.flags.push('violence');
+    if (spam > 0.5) result.flags.push('spam');
+
+    result.isSafe = result.flags.length === 0;
   } catch (error) {
-    console.error('Perspective API error:', error.response?.data || error.message);
-    // Fail-open with a note so content goes to manual review instead of blocking everything
+    console.error('Sightengine text moderation error:', error.response?.data || error.message);
+    result.failed = true;
     result.flags.push('moderation_check_failed');
-    result.isSafe = true; // don't block user if API itself fails
+    result.isSafe = false;
   }
 
   return result;
@@ -122,7 +120,7 @@ async function checkPlagiarism(newText, existingTexts = []) {
  * ============================================================
  */
 async function checkImageModeration(imageUrl) {
-  const result = { flags: [], score: 0, isSafe: true };
+  const result = { flags: [], score: 0, isSafe: true, failed: false };
 
   try {
     const response = await axios.get('https://api.sightengine.com/1.0/check.json', {
@@ -153,8 +151,9 @@ async function checkImageModeration(imageUrl) {
     result.isSafe = result.flags.length === 0;
   } catch (error) {
     console.error('Sightengine API error:', error.response?.data || error.message);
+    result.failed = true;
     result.flags.push('moderation_check_failed');
-    result.isSafe = true; // fail-open, let admin manually review
+    result.isSafe = false;
   }
 
   return result;
@@ -170,6 +169,8 @@ async function moderatePost({ postType, title, content, images = [], videoThumbn
   const allFlags = [];
   let maxScore = 0;
   let needsManualReview = false;
+  let moderationStatus = 'pending';
+  let moderationNote = 'Passed all AI checks';
 
   // Text check (title + content combined)
   const textToCheck = `${title} ${content}`.trim();
@@ -177,7 +178,7 @@ async function moderatePost({ postType, title, content, images = [], videoThumbn
     const textResult = await checkTextModeration(textToCheck);
     allFlags.push(...textResult.flags);
     maxScore = Math.max(maxScore, textResult.score);
-    if (textResult.flags.includes('moderation_check_failed')) needsManualReview = true;
+    if (textResult.failed) needsManualReview = true;
   }
 
   // Plagiarism check (only for blog/question text posts)
@@ -194,7 +195,7 @@ async function moderatePost({ postType, title, content, images = [], videoThumbn
     const imgResult = await checkImageModeration(imgUrl);
     allFlags.push(...imgResult.flags);
     maxScore = Math.max(maxScore, imgResult.score);
-    if (imgResult.flags.includes('moderation_check_failed')) needsManualReview = true;
+    if (imgResult.failed) needsManualReview = true;
   }
 
   // Video thumbnail check
@@ -202,28 +203,27 @@ async function moderatePost({ postType, title, content, images = [], videoThumbn
     const thumbResult = await checkImageModeration(videoThumbnail);
     allFlags.push(...thumbResult.flags);
     maxScore = Math.max(maxScore, thumbResult.score);
+    if (thumbResult.failed) needsManualReview = true;
   }
 
   const uniqueFlags = [...new Set(allFlags)].filter((f) => f !== 'moderation_check_failed');
 
-  let moderationStatus;
   if (needsManualReview) {
-    moderationStatus = 'flagged_for_review';
+    moderationStatus = 'pending';
+    moderationNote = 'AI moderation check failed - pending manual review';
   } else if (uniqueFlags.length > 0) {
-    moderationStatus = 'rejected';
+    moderationStatus = 'flagged_for_review';
+    moderationNote = `AI flagged content for review: ${uniqueFlags.join(', ')}`;
   } else {
     moderationStatus = 'approved';
+    moderationNote = 'Passed all AI checks';
   }
 
   return {
     moderationStatus,
     moderationFlags: uniqueFlags,
     moderationScore: maxScore,
-    moderationNote: needsManualReview
-      ? 'AI check failed - queued for manual admin review'
-      : uniqueFlags.length > 0
-      ? `Auto-rejected: ${uniqueFlags.join(', ')}`
-      : 'Passed all AI checks',
+    moderationNote,
   };
 }
 
