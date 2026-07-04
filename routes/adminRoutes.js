@@ -8,6 +8,27 @@ const { protect, admin } = require('../middleware/auth');
 
 router.use(protect, admin); // every route below requires admin
 
+// @route  GET /api/admin/run-migration-fix-old-posts
+router.get('/run-migration-fix-old-posts', async (req, res) => {
+  try {
+    const result = await Post.updateMany(
+      {
+        $or: [
+          { moderationStatus: { $exists: false } },
+          { moderationStatus: null },
+          { moderationStatus: undefined },
+          { moderationStatus: '' },
+        ],
+      },
+      { $set: { moderationStatus: 'approved' } }
+    );
+
+    res.json({ message: 'Migration complete', updatedCount: result.modifiedCount });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // @route  GET /api/admin/dashboard  (stats overview)
 router.get('/dashboard', async (req, res) => {
   try {
