@@ -3,6 +3,7 @@ const router = express.Router();
 const Message = require('../models/Message');
 const Group = require('../models/Group');
 const User = require('../models/User');
+const Follow = require('../models/Follow');
 const { protect } = require('../middleware/auth');
 
 // Helper: consistent conversationId for a DM between two users
@@ -13,7 +14,15 @@ function getDmConversationId(userA, userB) {
 // @route  GET /api/chat/dm/:userId  (get DM history with a user)
 router.get('/dm/:userId', protect, async (req, res) => {
   try {
-    const conversationId = getDmConversationId(req.user._id.toString(), req.params.userId);
+    const targetUserId = req.params.userId;
+    const followsBack = await Follow.exists({ follower: targetUserId, following: req.user._id });
+    const isFollowing = await Follow.exists({ follower: req.user._id, following: targetUserId });
+
+    if (!followsBack && !isFollowing) {
+      return res.status(403).json({ message: 'You can only chat with users you follow or who follow you' });
+    }
+
+    const conversationId = getDmConversationId(req.user._id.toString(), targetUserId);
     const messages = await Message.find({ chatType: 'dm', conversationId, isDeleted: false })
       .populate('sender', 'name avatar')
       .sort({ createdAt: 1 })

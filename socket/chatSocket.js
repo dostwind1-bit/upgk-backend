@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Message = require('../models/Message');
+const Follow = require('../models/Follow');
 const { checkTextModeration } = require('../services/moderation');
 
 function getDmConversationId(userA, userB) {
@@ -52,6 +53,14 @@ function initSocket(io) {
             reason: 'Message blocked by AI moderation',
             flags: modResult.flags,
           });
+          return;
+        }
+
+        const followsBack = await Follow.exists({ follower: toUserId, following: socket.user._id });
+        const isFollowing = await Follow.exists({ follower: socket.user._id, following: toUserId });
+
+        if (!followsBack && !isFollowing) {
+          socket.emit('error_message', { message: 'You can only chat with users you follow or who follow you' });
           return;
         }
 

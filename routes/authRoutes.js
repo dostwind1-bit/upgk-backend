@@ -4,9 +4,10 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Post = require('../models/Post');
-const { protect } = require('../middleware/auth');
+const { protect, optionalAuth } = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 const { normalizeEmail, isEnvAdminCredentials } = require('../utils/authHelpers');
+const Follow = require('../models/Follow');
 const { buildPublicProfilePayload } = require('../utils/publicProfile');
 
 const generateToken = (id) => {
@@ -138,7 +139,7 @@ router.get('/users', protect, async (req, res) => {
 });
 
 // @route  GET /api/auth/profile/:userId
-router.get('/profile/:userId', async (req, res) => {
+router.get('/profile/:userId', optionalAuth, async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -149,8 +150,19 @@ router.get('/profile/:userId', async (req, res) => {
     const user = await User.findById(userId).select('_id name avatar bio role');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const posts = await Post.find({ author: user._id }).sort({ createdAt: -1 }).lean();
-    res.json(buildPublicProfilePayload(user, posts));
+    const [posts, followersCount, followingCount, isFollowing] = await Promise.all([
+      Post.find({ author: user._id }).sort({ createdAt: -1 }).lean(),
+      Follow.countDocuments({ following: user._id }),
+      Follow.countDocuments({ follower: user._id }),
+      Follow.exists({ follower: req.user?._id, following: user._id }),
+    ]);
+
+    res.json({
+      ...buildPublicProfilePayload(user, posts),
+      followersCount,
+      followingCount,
+      isFollowing: Boolean(isFollowing),
+    });
   } catch (error) {
     console.error('[auth/profile] Public profile lookup failed', {
       userId: req.params.userId,
