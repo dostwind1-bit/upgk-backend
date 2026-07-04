@@ -193,9 +193,12 @@ router.get('/:slug', optionalAuth, async (req, res) => {
 });
 
 // @route  PUT /api/posts/:id
-router.put('/:id', protect, [
+router.put('/:id', protect, uploadImage.array('images', 5), [
   body('title').optional().trim().notEmpty().withMessage('Title is required').isLength({ max: 200 }).withMessage('Title must be at most 200 characters'),
   body('content').optional().trim().notEmpty().withMessage('Content is required').isLength({ max: 10000 }).withMessage('Content must be at most 10000 characters'),
+  body('category').optional().isString(),
+  body('imageAltText').optional().isString(),
+  body('metaDescription').optional().isLength({ max: 180 }).withMessage('Meta description must be at most 180 characters'),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -208,13 +211,49 @@ router.put('/:id', protect, [
       return res.status(403).json({ message: 'Not authorized' });
     }
 
-    const { title, content } = req.body;
-    if (title === undefined && content === undefined) {
+    const { title, content, category, tags, imageAltText, metaDescription } = req.body;
+    const hasNewImages = Array.isArray(req.files) && req.files.length > 0;
+    const hasUpdates = [title, content, category, tags, imageAltText, metaDescription].some((value) => value !== undefined) || hasNewImages;
+
+    if (!hasUpdates) {
       return res.status(400).json({ message: 'Nothing to update' });
+    }
+
+    const allowedCategories = [
+      'General',
+      'Education',
+      'Technology',
+      'Health & Fitness',
+      'Business & Finance',
+      'Career & Jobs',
+      'Relationships',
+      'Entertainment',
+      'Sports',
+      'Science',
+      'Personal Development',
+      'Travel',
+      'Food',
+      'Sawaal',
+    ];
+
+    if (category && !allowedCategories.includes(category)) {
+      return res.status(400).json({ message: 'Invalid category' });
     }
 
     if (title !== undefined) post.title = title;
     if (content !== undefined) post.content = content;
+    if (category !== undefined) post.category = category;
+    if (tags !== undefined) {
+      post.tags = tags
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+    }
+    if (imageAltText !== undefined) post.imageAltText = imageAltText;
+    if (metaDescription !== undefined) post.metaDescription = metaDescription;
+    if (hasNewImages) {
+      post.images = req.files.map((file) => file.path);
+    }
 
     const existingTexts = [];
     const modResult = await moderatePost({

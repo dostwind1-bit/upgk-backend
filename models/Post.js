@@ -35,6 +35,8 @@ const postSchema = new mongoose.Schema(
 
     // Media fields
     images: [{ type: String }], // cloudinary URLs
+    imageAltText: { type: String, default: '' },
+    metaDescription: { type: String, default: '' },
     videoType: { type: String, enum: ['upload', 'youtube', null], default: null },
     videoUrl: { type: String, default: '' }, // cloudinary URL or youtube URL
     videoThumbnail: { type: String, default: '' },
