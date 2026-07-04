@@ -37,12 +37,20 @@ router.get('/posts', async (req, res) => {
 
     const posts = await Post.find(query)
       .populate('author', 'name email')
-      .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
 
+    const sortedPosts = posts.sort((a, b) => {
+      const order = { flagged_for_review: 0, pending: 1, approved: 2, rejected: 3 };
+      const aOrder = order[a.moderationStatus] ?? 99;
+      const bOrder = order[b.moderationStatus] ?? 99;
+
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
     const total = await Post.countDocuments(query);
-    res.json({ posts, total, page: Number(page), pages: Math.ceil(total / limit) });
+    res.json({ posts: sortedPosts, total, page: Number(page), pages: Math.ceil(total / limit) });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
