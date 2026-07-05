@@ -183,8 +183,7 @@ router.get('/:slug', optionalAuth, async (req, res) => {
       if (!isOwner && !isAdmin) return res.status(404).json({ message: 'Post not found' });
     }
 
-    post.views += 1;
-    await post.save();
+   await Post.findByIdAndUpdate(post._id, { $inc: { views: 1 } });
 
     res.json(post);
   } catch (error) {
